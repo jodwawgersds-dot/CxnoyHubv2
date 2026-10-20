@@ -1,5 +1,5 @@
 -- cxnoy hub V5.6 (Client LocalScript)
--- Modern Dark-Glass Roblox Suite with Credits, Customization & Quick Keybinds
+-- Modern Dark-Glass Roblox Suite with Hold-to-Lock Aimlock Fix
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -21,7 +21,7 @@ local Config = {
     Smoothness = 0.2,                         -- Lower = smoother tracking
     TeamCheck = false,
     
-    -- FOV Configuration (Default set to 45 as requested)
+    -- FOV Configuration
     FOVRadius = 45,
     FOVVisible = true,
     FOVColor = Color3.fromRGB(0, 200, 255),
@@ -45,6 +45,9 @@ local Config = {
     UITransparency = 0,
     DiscordLink = "https://discord.gg/dKWQEKbHZk"
 }
+
+-- Target locking state tracking
+local LockedTarget = nil
 
 -- Theme Palette Presets
 local Themes = {
@@ -669,6 +672,11 @@ local function CreateKeybind(parent, text, currentInput, callback)
                 KeyBtn.Text = input.KeyCode.Name
                 KeyBtn.TextColor3 = Color3.fromRGB(0, 190, 255)
                 callback(input.KeyCode)
+            elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+                binding = false
+                KeyBtn.Text = "RightMouse"
+                KeyBtn.TextColor3 = Color3.fromRGB(0, 190, 255)
+                callback(Enum.UserInputType.MouseButton2)
             end
         end
     end)
@@ -738,6 +746,7 @@ CreateDiscordButton(HomeTab)
 -- 2. AIMLOCK TAB
 CreateToggle(AimTab, "Enable Aimlock", Config.AimlockEnabled, function(state)
     Config.AimlockEnabled = state
+    if not state then LockedTarget = nil end
 end)
 
 CreateDropdown(AimTab, "Target Part", {"Head", "HumanoidRootPart", "Left Arm", "Right Arm"}, Config.AimPart, function(selected)
@@ -774,11 +783,15 @@ CreateSlider(CustomTab, "UI Transparency %", 0, 90, math.floor(Config.UITranspar
 end)
 
 -- 5. SETTINGS TAB (Keybind Controls)
-CreateKeybind(SettingsTab, "Toggle Aimlock Key", Config.ToggleAimlockKey, function(newInput)
+CreateKeybind(SettingsTab, "Aim Key (Hold)", Config.AimKey, function(newInput)
+    Config.AimKey = newInput
+end)
+
+CreateKeybind(SettingsTab, "Toggle Aimlock Feature", Config.ToggleAimlockKey, function(newInput)
     Config.ToggleAimlockKey = newInput
 end)
 
-CreateKeybind(SettingsTab, "Toggle ESP Key", Config.ToggleESPKey, function(newInput)
+CreateKeybind(SettingsTab, "Toggle ESP Feature", Config.ToggleESPKey, function(newInput)
     Config.ToggleESPKey = newInput
 end)
 
@@ -826,6 +839,33 @@ local function getTargetInFOV()
     return closestPlayer
 end
 
+-- Check if current input matches our set Aim Key
+local function isAimInput(input)
+    if typeof(Config.AimKey) == "EnumItem" then
+        if Config.AimKey.EnumType == Enum.UserInputType then
+            return input.UserInputType == Config.AimKey
+        elseif Config.AimKey.EnumType == Enum.KeyCode then
+            return input.KeyCode == Config.AimKey
+        end
+    end
+    return false
+end
+
+-- Detect when user presses or releases aim button
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if isAimInput(input) and Config.AimlockEnabled then
+        LockedTarget = getTargetInFOV()
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if isAimInput(input) then
+        LockedTarget = nil
+    end
+end)
+
 -- Render loop handles Aimlock tracking and FOV updates
 RunService.RenderStepped:Connect(function()
     -- Update FOV Circle Position
@@ -836,27 +876,17 @@ RunService.RenderStepped:Connect(function()
         FOVCircle.Visible = false
     end
 
-    -- Fixed Aimlock Input & Tracking Logic
-    if Config.AimlockEnabled then
-        local isAiming = false
-        if typeof(Config.AimKey) == "EnumItem" then
-            if Config.AimKey.EnumType == Enum.UserInputType then
-                isAiming = UserInputService:IsMouseButtonPressed(Config.AimKey)
-            elseif Config.AimKey.EnumType == Enum.KeyCode then
-                isAiming = UserInputService:IsKeyDown(Config.AimKey)
-            end
-        end
+    -- Smooth Aimlock Lock-On Logic while holding mouse button
+    if Config.AimlockEnabled and LockedTarget and LockedTarget.Character then
+        local humanoid = LockedTarget.Character:FindFirstChildOfClass("Humanoid")
+        local targetPart = getTargetPart(LockedTarget.Character)
 
-        if isAiming then
-            local target = getTargetInFOV()
-            if target and target.Character then
-                local targetPart = getTargetPart(target.Character)
-                if targetPart then
-                    local currentCFrame = Camera.CFrame
-                    local targetCFrame = CFrame.new(currentCFrame.Position, targetPart.Position)
-                    Camera.CFrame = currentCFrame:Lerp(targetCFrame, math.clamp(Config.Smoothness, 0.01, 1))
-                end
-            end
+        if humanoid and humanoid.Health > 0 and targetPart then
+            local currentCFrame = Camera.CFrame
+            local targetCFrame = CFrame.new(currentCFrame.Position, targetPart.Position)
+            Camera.CFrame = currentCFrame:Lerp(targetCFrame, math.clamp(Config.Smoothness, 0.01, 1))
+        else
+            LockedTarget = nil -- Target died or left
         end
     end
 
@@ -883,7 +913,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- UI Keybinds Listener
+-- Additional UI Keybind Listener
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
@@ -891,10 +921,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         MainFrame.Visible = not MainFrame.Visible
     elseif input.KeyCode == Config.ToggleAimlockKey then
         Config.AimlockEnabled = not Config.AimlockEnabled
-        ShowNotification("Aimlock Toggled", "Aimlock is now " .. (Config.AimlockEnabled and "ON" or "OFF"))
+        if not Config.AimlockEnabled then LockedTarget = nil end
+        ShowNotification("Aimlock Feature", "Aimlock is now " .. (Config.AimlockEnabled and "ON" or "OFF"))
     elseif input.KeyCode == Config.ToggleESPKey then
         Config.ESPEnabled = not Config.ESPEnabled
-        ShowNotification("ESP Toggled", "ESP is now " .. (Config.ESPEnabled and "ON" or "OFF"))
+        ShowNotification("ESP Feature", "ESP is now " .. (Config.ESPEnabled and "ON" or "OFF"))
     end
 end)
 
