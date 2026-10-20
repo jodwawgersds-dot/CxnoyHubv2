@@ -1,0 +1,901 @@
+-- cxnoy hub V5.6 (Client LocalScript)
+-- Modern Dark-Glass Roblox Suite with Credits, Customization & Quick Keybinds
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+--------------------------------------------------------------------------------
+-- CONFIGURATION & STATE
+--------------------------------------------------------------------------------
+local Config = {
+    -- Aimlock Configuration
+    AimlockEnabled = false,
+    AimKey = Enum.UserInputType.MouseButton2, -- Right Mouse Button Default
+    AimPart = "Head",                         -- "Head", "HumanoidRootPart", "Left Arm", "Right Arm"
+    Smoothness = 0.2,                         -- Lower = smoother tracking
+    TeamCheck = false,
+    
+    -- FOV Configuration (Default set to 45 as requested)
+    FOVRadius = 45,
+    FOVVisible = true,
+    FOVColor = Color3.fromRGB(0, 200, 255),
+    FOVThickness = 1.5,
+    
+    -- ESP Configuration
+    ESPEnabled = true,
+    ESPKey = Enum.KeyCode.V,
+    ESPColor = Color3.fromRGB(255, 60, 90),
+    ESPFillColor = Color3.fromRGB(255, 60, 90),
+    ESPFillTransparency = 0.6,
+    ShowDistance = true,
+    
+    -- UI Keybinds & Customization
+    MenuKey = Enum.KeyCode.RightShift,
+    FreeMouseKey = Enum.KeyCode.Q,
+    ToggleAimlockKey = Enum.KeyCode.G,
+    ToggleESPKey = Enum.KeyCode.V,
+    
+    ActiveTheme = "Cyan",
+    UITransparency = 0,
+    DiscordLink = "https://discord.gg/dKWQEKbHZk"
+}
+
+-- Theme Palette Presets
+local Themes = {
+    Cyan = { Primary = Color3.fromRGB(0, 180, 255), Secondary = Color3.fromRGB(0, 110, 220) },
+    Sunset = { Primary = Color3.fromRGB(255, 90, 120), Secondary = Color3.fromRGB(255, 140, 50) },
+    Emerald = { Primary = Color3.fromRGB(0, 220, 130), Secondary = Color3.fromRGB(0, 150, 90) },
+    Purple = { Primary = Color3.fromRGB(170, 80, 255), Secondary = Color3.fromRGB(110, 40, 210) }
+}
+
+--------------------------------------------------------------------------------
+-- DRAWING OVERLAY (FOV CIRCLE)
+--------------------------------------------------------------------------------
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = Config.FOVThickness
+FOVCircle.NumSides = 90
+FOVCircle.Radius = Config.FOVRadius
+FOVCircle.Filled = false
+FOVCircle.Visible = Config.FOVVisible
+FOVCircle.Color = Config.FOVColor
+
+--------------------------------------------------------------------------------
+-- UI BUILDER (CXNOY HUB V5.6)
+--------------------------------------------------------------------------------
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+if PlayerGui:FindFirstChild("cxnoyHubUI") then
+    PlayerGui.cxnoyHubUI:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "cxnoyHubUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
+
+-- Toast Notification Builder
+local function ShowNotification(title, message)
+    local notifFrame = Instance.new("Frame")
+    notifFrame.Size = UDim2.new(0, 240, 0, 50)
+    notifFrame.Position = UDim2.new(1, 20, 0.82, 0)
+    notifFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    notifFrame.BorderSizePixel = 0
+    notifFrame.Parent = ScreenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = notifFrame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Themes[Config.ActiveTheme].Primary
+    stroke.Thickness = 1.5
+    stroke.Parent = notifFrame
+
+    local tLabel = Instance.new("TextLabel")
+    tLabel.Size = UDim2.new(1, -20, 0, 18)
+    tLabel.Position = UDim2.new(0, 12, 0, 7)
+    tLabel.BackgroundTransparency = 1
+    tLabel.Text = title
+    tLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    tLabel.Font = Enum.Font.GothamBold
+    tLabel.TextSize = 13
+    tLabel.TextXAlignment = Enum.TextXAlignment.Left
+    tLabel.Parent = notifFrame
+
+    local mLabel = Instance.new("TextLabel")
+    mLabel.Size = UDim2.new(1, -20, 0, 16)
+    mLabel.Position = UDim2.new(0, 12, 0, 25)
+    mLabel.BackgroundTransparency = 1
+    mLabel.Text = message
+    mLabel.TextColor3 = Color3.fromRGB(160, 160, 180)
+    mLabel.Font = Enum.Font.Gotham
+    mLabel.TextSize = 11
+    mLabel.TextXAlignment = Enum.TextXAlignment.Left
+    mLabel.Parent = notifFrame
+
+    TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(1, -260, 0.82, 0)}):Play()
+    task.delay(3, function()
+        local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.3, Enum.EasingStyle.Cubic, Enum.EasingDirection.In), {Position = UDim2.new(1, 20, 0.82, 0)})
+        tweenOut:Play()
+        tweenOut.Completed:Connect(function()
+            notifFrame:Destroy()
+        end)
+    end)
+end
+
+-- Main Container
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 540, 0, 430)
+MainFrame.Position = UDim2.new(0.5, -270, 0.5, -215)
+MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+MainFrame.BackgroundTransparency = Config.UITransparency
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 14)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(40, 40, 52)
+MainStroke.Thickness = 1.5
+MainStroke.Parent = MainFrame
+
+-- Top Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 45)
+TitleBar.BackgroundColor3 = Color3.fromRGB(17, 17, 23)
+TitleBar.BackgroundTransparency = Config.UITransparency
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleBarCorner = Instance.new("UICorner")
+TitleBarCorner.CornerRadius = UDim.new(0, 14)
+TitleBarCorner.Parent = TitleBar
+
+local TitleText = Instance.new("TextLabel")
+TitleText.Size = UDim2.new(1, -20, 1, 0)
+TitleText.Position = UDim2.new(0, 18, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.Text = "<b>cxnoy hub</b> <font color='#666677'>| v5.6</font>"
+TitleText.RichText = true
+TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleText.Font = Enum.Font.GothamBold
+TitleText.TextSize = 15
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = TitleBar
+
+local AccentBar = Instance.new("Frame")
+AccentBar.Size = UDim2.new(1, 0, 0, 2)
+AccentBar.Position = UDim2.new(0, 0, 1, -2)
+AccentBar.BorderSizePixel = 0
+AccentBar.Parent = TitleBar
+
+local AccentGradient = Instance.new("UIGradient")
+AccentGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Themes.Cyan.Primary),
+    ColorSequenceKeypoint.new(1, Themes.Cyan.Secondary)
+})
+AccentGradient.Parent = AccentBar
+
+-- Sidebar Navigation
+local NavFrame = Instance.new("Frame")
+NavFrame.Size = UDim2.new(0, 135, 1, -45)
+NavFrame.Position = UDim2.new(0, 0, 0, 45)
+NavFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+NavFrame.BackgroundTransparency = Config.UITransparency
+NavFrame.BorderSizePixel = 0
+NavFrame.Parent = MainFrame
+
+local NavList = Instance.new("UIListLayout")
+NavList.Padding = UDim.new(0, 6)
+NavList.SortOrder = Enum.SortOrder.LayoutOrder
+NavList.Parent = NavFrame
+
+local NavPadding = Instance.new("UIPadding")
+NavPadding.PaddingTop = UDim.new(0, 12)
+NavPadding.PaddingLeft = UDim.new(0, 10)
+NavPadding.PaddingRight = UDim.new(0, 10)
+NavPadding.Parent = NavFrame
+
+-- Content Container
+local ContentContainer = Instance.new("Frame")
+ContentContainer.Size = UDim2.new(1, -150, 1, -55)
+ContentContainer.Position = UDim2.new(0, 142, 0, 50)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.Parent = MainFrame
+
+--------------------------------------------------------------------------------
+-- TAB SYSTEM & THEME MANAGER
+--------------------------------------------------------------------------------
+local Tabs = {}
+local TabButtons = {}
+local ActiveTabName = "Home"
+
+local function ApplyTransparency(val)
+    Config.UITransparency = val
+    MainFrame.BackgroundTransparency = val
+    TitleBar.BackgroundTransparency = val
+    NavFrame.BackgroundTransparency = val
+end
+
+local function ApplyTheme(themeName)
+    local theme = Themes[themeName] or Themes.Cyan
+    Config.ActiveTheme = themeName
+
+    AccentGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, theme.Primary),
+        ColorSequenceKeypoint.new(1, theme.Secondary)
+    })
+
+    for name, btn in pairs(TabButtons) do
+        if name == ActiveTabName then
+            btn.BackgroundColor3 = theme.Primary
+        end
+    end
+end
+
+local function CreateTab(name, layoutOrder)
+    local TabButton = Instance.new("TextButton")
+    TabButton.Size = UDim2.new(1, 0, 0, 32)
+    TabButton.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+    TabButton.BackgroundTransparency = 1
+    TabButton.Text = name
+    TabButton.TextColor3 = Color3.fromRGB(150, 150, 165)
+    TabButton.Font = Enum.Font.GothamMedium
+    TabButton.TextSize = 11
+    TabButton.LayoutOrder = layoutOrder
+    TabButton.Parent = NavFrame
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 8)
+    BtnCorner.Parent = TabButton
+
+    local TabContent = Instance.new("ScrollingFrame")
+    TabContent.Size = UDim2.new(1, 0, 1, 0)
+    TabContent.BackgroundTransparency = 1
+    TabContent.Visible = false
+    TabContent.ScrollBarThickness = 3
+    TabContent.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 80)
+    TabContent.CanvasSize = UDim2.new(0, 0, 1.5, 0)
+    TabContent.Parent = ContentContainer
+
+    local ContentList = Instance.new("UIListLayout")
+    ContentList.Padding = UDim.new(0, 8)
+    ContentList.SortOrder = Enum.SortOrder.LayoutOrder
+    ContentList.Parent = TabContent
+
+    Tabs[name] = TabContent
+    TabButtons[name] = TabButton
+
+    TabButton.MouseButton1Click:Connect(function()
+        ActiveTabName = name
+        for _, content in pairs(Tabs) do content.Visible = false end
+        for _, btn in pairs(TabButtons) do
+            btn.BackgroundTransparency = 1
+            btn.TextColor3 = Color3.fromRGB(150, 150, 165)
+        end
+        TabContent.Visible = true
+        TabButton.BackgroundTransparency = 0
+        TabButton.BackgroundColor3 = Themes[Config.ActiveTheme].Primary
+        TabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+
+    return TabContent
+end
+
+-- Create Tabs
+local HomeTab = CreateTab("Home", 1)
+local AimTab = CreateTab("Aimlock", 2)
+local VisualsTab = CreateTab("Visuals", 3)
+local CustomTab = CreateTab("Customization", 4)
+local SettingsTab = CreateTab("Settings", 5)
+
+-- Default Active Tab
+TabButtons["Home"].BackgroundTransparency = 0
+TabButtons["Home"].BackgroundColor3 = Themes.Cyan.Primary
+TabButtons["Home"].TextColor3 = Color3.fromRGB(255, 255, 255)
+Tabs["Home"].Visible = true
+
+--------------------------------------------------------------------------------
+-- UI CONTROLS BUILDER HELPERS
+--------------------------------------------------------------------------------
+local function CreateWelcomeBanner(parent)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -10, 0, 60)
+    Frame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    Frame.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Frame
+
+    local Header = Instance.new("TextLabel")
+    Header.Size = UDim2.new(1, -24, 0, 22)
+    Header.Position = UDim2.new(0, 14, 0, 10)
+    Header.BackgroundTransparency = 1
+    Header.Text = "Welcome, " .. LocalPlayer.Name .. "!"
+    Header.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Header.Font = Enum.Font.GothamBold
+    Header.TextSize = 14
+    Header.TextXAlignment = Enum.TextXAlignment.Left
+    Header.Parent = Frame
+
+    local Subtext = Instance.new("TextLabel")
+    Subtext.Size = UDim2.new(1, -24, 0, 18)
+    Subtext.Position = UDim2.new(0, 14, 0, 32)
+    Subtext.BackgroundTransparency = 1
+    Subtext.Text = "cxnoy hub v5.6 loaded successfully."
+    Subtext.TextColor3 = Color3.fromRGB(150, 150, 175)
+    Subtext.Font = Enum.Font.Gotham
+    Subtext.TextSize = 11
+    Subtext.TextXAlignment = Enum.TextXAlignment.Left
+    Subtext.Parent = Frame
+end
+
+local function CreateCreditsSection(parent)
+    local function createCreditCard(role, name, color)
+        local Card = Instance.new("Frame")
+        Card.Size = UDim2.new(1, -10, 0, 44)
+        Card.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+        Card.Parent = parent
+
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(0, 8)
+        Corner.Parent = Card
+
+        local RoleBadge = Instance.new("TextLabel")
+        RoleBadge.Size = UDim2.new(0, 65, 0, 20)
+        RoleBadge.Position = UDim2.new(0, 12, 0.5, -10)
+        RoleBadge.BackgroundColor3 = color
+        RoleBadge.Text = role
+        RoleBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
+        RoleBadge.Font = Enum.Font.GothamBold
+        RoleBadge.TextSize = 10
+        RoleBadge.Parent = Card
+
+        local BadgeCorner = Instance.new("UICorner")
+        BadgeCorner.CornerRadius = UDim.new(0, 4)
+        BadgeCorner.Parent = RoleBadge
+
+        local NameLabel = Instance.new("TextLabel")
+        NameLabel.Size = UDim2.new(0.6, 0, 1, 0)
+        NameLabel.Position = UDim2.new(0, 85, 0, 0)
+        NameLabel.BackgroundTransparency = 1
+        NameLabel.Text = name
+        NameLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
+        NameLabel.Font = Enum.Font.GothamBold
+        NameLabel.TextSize = 12
+        NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        NameLabel.Parent = Card
+    end
+
+    createCreditCard("OWNER", "Cxnoy", Color3.fromRGB(0, 170, 255))
+    createCreditCard("ADMIN", "Haris", Color3.fromRGB(255, 80, 100))
+end
+
+local function CreateDiscordButton(parent)
+    local DiscFrame = Instance.new("Frame")
+    DiscFrame.Size = UDim2.new(1, -10, 0, 48)
+    DiscFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    DiscFrame.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = DiscFrame
+
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color = Color3.fromRGB(88, 101, 242)
+    Stroke.Thickness = 1.2
+    Stroke.Parent = DiscFrame
+
+    local SubText = Instance.new("TextLabel")
+    SubText.Size = UDim2.new(0, 180, 0, 20)
+    SubText.Position = UDim2.new(0, 14, 0.5, -10)
+    SubText.BackgroundTransparency = 1
+    SubText.Text = "Discord Server Invite"
+    SubText.TextColor3 = Color3.fromRGB(200, 200, 220)
+    SubText.Font = Enum.Font.GothamMedium
+    SubText.TextSize = 11
+    SubText.TextXAlignment = Enum.TextXAlignment.Left
+    SubText.Parent = DiscFrame
+
+    local CopyBtn = Instance.new("TextButton")
+    CopyBtn.Size = UDim2.new(0, 95, 0, 26)
+    CopyBtn.Position = UDim2.new(1, -107, 0.5, -13)
+    CopyBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+    CopyBtn.Text = "Copy Link"
+    CopyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CopyBtn.Font = Enum.Font.GothamBold
+    CopyBtn.TextSize = 10
+    CopyBtn.Parent = DiscFrame
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 6)
+    BtnCorner.Parent = CopyBtn
+
+    CopyBtn.MouseButton1Click:Connect(function()
+        pcall(function() setclipboard(Config.DiscordLink) end)
+        ShowNotification("Copied Link!", "Discord link copied to clipboard.")
+    end)
+end
+
+local function CreateToggle(parent, text, defaultState, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -10, 0, 38)
+    Frame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    Frame.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Frame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.7, 0, 1, 0)
+    Label.Position = UDim2.new(0, 14, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(220, 220, 235)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Frame
+
+    local Switch = Instance.new("TextButton")
+    Switch.Size = UDim2.new(0, 40, 0, 20)
+    Switch.Position = UDim2.new(1, -52, 0.5, -10)
+    Switch.BackgroundColor3 = defaultState and Color3.fromRGB(0, 200, 120) or Color3.fromRGB(45, 45, 55)
+    Switch.Text = ""
+    Switch.Parent = Frame
+
+    local SwitchCorner = Instance.new("UICorner")
+    SwitchCorner.CornerRadius = UDim.new(1, 0)
+    SwitchCorner.Parent = Switch
+
+    local Knob = Instance.new("Frame")
+    Knob.Size = UDim2.new(0, 16, 0, 16)
+    Knob.Position = defaultState and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Knob.Parent = Switch
+
+    local KnobCorner = Instance.new("UICorner")
+    KnobCorner.CornerRadius = UDim.new(1, 0)
+    KnobCorner.Parent = Knob
+
+    local state = defaultState
+    Switch.MouseButton1Click:Connect(function()
+        state = not state
+        local targetPos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        local targetColor = state and Color3.fromRGB(0, 200, 120) or Color3.fromRGB(45, 45, 55)
+
+        TweenService:Create(Knob, TweenInfo.new(0.18), {Position = targetPos}):Play()
+        TweenService:Create(Switch, TweenInfo.new(0.18), {BackgroundColor3 = targetColor}):Play()
+
+        callback(state)
+    end)
+end
+
+local function CreateSlider(parent, text, min, max, default, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -10, 0, 50)
+    Frame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    Frame.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Frame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.6, 0, 0, 20)
+    Label.Position = UDim2.new(0, 14, 0, 6)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(220, 220, 235)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Frame
+
+    local ValueLabel = Instance.new("TextLabel")
+    ValueLabel.Size = UDim2.new(0.3, 0, 0, 20)
+    ValueLabel.Position = UDim2.new(0.7, -14, 0, 6)
+    ValueLabel.BackgroundTransparency = 1
+    ValueLabel.Text = tostring(default)
+    ValueLabel.TextColor3 = Color3.fromRGB(150, 150, 175)
+    ValueLabel.Font = Enum.Font.GothamMedium
+    ValueLabel.TextSize = 12
+    ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    ValueLabel.Parent = Frame
+
+    local SliderBack = Instance.new("TextButton")
+    SliderBack.Size = UDim2.new(1, -28, 0, 6)
+    SliderBack.Position = UDim2.new(0, 14, 0, 34)
+    SliderBack.BackgroundColor3 = Color3.fromRGB(40, 40, 52)
+    SliderBack.Text = ""
+    SliderBack.AutoButtonColor = false
+    SliderBack.Parent = Frame
+
+    local SliderCorner = Instance.new("UICorner")
+    SliderCorner.CornerRadius = UDim.new(1, 0)
+    SliderCorner.Parent = SliderBack
+
+    local FillPct = math.clamp((default - min) / (max - min), 0, 1)
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Size = UDim2.new(FillPct, 0, 1, 0)
+    SliderFill.BackgroundColor3 = Themes[Config.ActiveTheme].Primary
+    SliderFill.BorderSizePixel = 0
+    SliderFill.Parent = SliderBack
+
+    local FillCorner = Instance.new("UICorner")
+    FillCorner.CornerRadius = UDim.new(1, 0)
+    FillCorner.Parent = SliderFill
+
+    local isDragging = false
+    local function update(input)
+        local posX = input.Position.X - SliderBack.AbsolutePosition.X
+        local pct = math.clamp(posX / SliderBack.AbsoluteSize.X, 0, 1)
+        local val = math.floor(min + (max - min) * pct)
+
+        SliderFill.Size = UDim2.new(pct, 0, 1, 0)
+        ValueLabel.Text = tostring(val)
+        callback(val)
+    end
+
+    SliderBack.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = true
+            update(input)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            update(input)
+        end
+    end)
+end
+
+local function CreateDropdown(parent, text, options, defaultOption, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -10, 0, 38)
+    Frame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    Frame.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Frame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.5, 0, 1, 0)
+    Label.Position = UDim2.new(0, 14, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(220, 220, 235)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Frame
+
+    local DropBtn = Instance.new("TextButton")
+    DropBtn.Size = UDim2.new(0, 120, 0, 24)
+    DropBtn.Position = UDim2.new(1, -132, 0.5, -12)
+    DropBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    DropBtn.Text = defaultOption
+    DropBtn.TextColor3 = Color3.fromRGB(0, 190, 255)
+    DropBtn.Font = Enum.Font.GothamBold
+    DropBtn.TextSize = 11
+    DropBtn.Parent = Frame
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 4)
+    BtnCorner.Parent = DropBtn
+
+    local currentIndex = 1
+    for i, opt in ipairs(options) do
+        if opt == defaultOption then currentIndex = i end
+    end
+
+    DropBtn.MouseButton1Click:Connect(function()
+        currentIndex = currentIndex + 1
+        if currentIndex > #options then currentIndex = 1 end
+        local selected = options[currentIndex]
+        DropBtn.Text = selected
+        callback(selected)
+    end)
+end
+
+local function CreateKeybind(parent, text, currentInput, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -10, 0, 38)
+    Frame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    Frame.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Frame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.5, 0, 1, 0)
+    Label.Position = UDim2.new(0, 14, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(220, 220, 235)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Frame
+
+    local KeyBtn = Instance.new("TextButton")
+    KeyBtn.Size = UDim2.new(0, 90, 0, 24)
+    KeyBtn.Position = UDim2.new(1, -102, 0.5, -12)
+    KeyBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    KeyBtn.Text = typeof(currentInput) == "EnumItem" and currentInput.Name or "None"
+    KeyBtn.TextColor3 = Color3.fromRGB(0, 190, 255)
+    KeyBtn.Font = Enum.Font.GothamBold
+    KeyBtn.TextSize = 11
+    KeyBtn.Parent = Frame
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 4)
+    BtnCorner.Parent = KeyBtn
+
+    local binding = false
+    KeyBtn.MouseButton1Click:Connect(function()
+        binding = true
+        KeyBtn.Text = "..."
+        KeyBtn.TextColor3 = Color3.fromRGB(255, 200, 0)
+    end)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if binding then
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                binding = false
+                KeyBtn.Text = input.KeyCode.Name
+                KeyBtn.TextColor3 = Color3.fromRGB(0, 190, 255)
+                callback(input.KeyCode)
+            end
+        end
+    end)
+end
+
+local function CreateThemePicker(parent)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -10, 0, 58)
+    Frame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    Frame.Parent = parent
+
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 6)
+    Corner.Parent = Frame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -24, 0, 20)
+    Label.Position = UDim2.new(0, 14, 0, 6)
+    Label.BackgroundTransparency = 1
+    Label.Text = "UI Theme Gradient"
+    Label.TextColor3 = Color3.fromRGB(220, 220, 235)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Frame
+
+    local ButtonContainer = Instance.new("Frame")
+    ButtonContainer.Size = UDim2.new(1, -28, 0, 22)
+    ButtonContainer.Position = UDim2.new(0, 14, 0, 28)
+    ButtonContainer.BackgroundTransparency = 1
+    ButtonContainer.Parent = Frame
+
+    local Grid = Instance.new("UIGridLayout")
+    Grid.CellSize = UDim2.new(0.23, 0, 1, 0)
+    Grid.CellPadding = UDim2.new(0.02, 0, 0, 0)
+    Grid.Parent = ButtonContainer
+
+    local themeList = { "Cyan", "Sunset", "Emerald", "Purple" }
+    for _, name in ipairs(themeList) do
+        local themeBtn = Instance.new("TextButton")
+        themeBtn.Text = name
+        themeBtn.Font = Enum.Font.GothamMedium
+        themeBtn.TextSize = 10
+        themeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        themeBtn.BackgroundColor3 = Themes[name].Primary
+        themeBtn.Parent = ButtonContainer
+
+        local BtnCorner = Instance.new("UICorner")
+        BtnCorner.CornerRadius = UDim.new(0, 4)
+        BtnCorner.Parent = themeBtn
+
+        themeBtn.MouseButton1Click:Connect(function()
+            ApplyTheme(name)
+        end)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- POPULATE TABS
+--------------------------------------------------------------------------------
+
+-- 1. HOME TAB
+CreateWelcomeBanner(HomeTab)
+CreateCreditsSection(HomeTab)
+CreateDiscordButton(HomeTab)
+
+-- 2. AIMLOCK TAB
+CreateToggle(AimTab, "Enable Aimlock", Config.AimlockEnabled, function(state)
+    Config.AimlockEnabled = state
+end)
+
+CreateDropdown(AimTab, "Target Part", {"Head", "HumanoidRootPart", "Left Arm", "Right Arm"}, Config.AimPart, function(selected)
+    Config.AimPart = selected
+end)
+
+CreateSlider(AimTab, "Aimlock Smoothness", 1, 10, math.floor(Config.Smoothness * 100), function(val)
+    Config.Smoothness = val / 100
+end)
+
+CreateToggle(AimTab, "Team Check", Config.TeamCheck, function(state)
+    Config.TeamCheck = state
+end)
+
+CreateToggle(AimTab, "Show FOV Circle", Config.FOVVisible, function(state)
+    Config.FOVVisible = state
+    FOVCircle.Visible = state
+end)
+
+CreateSlider(AimTab, "FOV Circle Size", 10, 300, Config.FOVRadius, function(val)
+    Config.FOVRadius = val
+    FOVCircle.Radius = val
+end)
+
+-- 3. VISUALS TAB
+CreateToggle(VisualsTab, "Enable ESP Highlights", Config.ESPEnabled, function(state)
+    Config.ESPEnabled = state
+end)
+
+-- 4. CUSTOMIZATION TAB
+CreateThemePicker(CustomTab)
+CreateSlider(CustomTab, "UI Transparency %", 0, 90, math.floor(Config.UITransparency * 100), function(val)
+    ApplyTransparency(val / 100)
+end)
+
+-- 5. SETTINGS TAB (Keybind Controls)
+CreateKeybind(SettingsTab, "Toggle Aimlock Key", Config.ToggleAimlockKey, function(newInput)
+    Config.ToggleAimlockKey = newInput
+end)
+
+CreateKeybind(SettingsTab, "Toggle ESP Key", Config.ToggleESPKey, function(newInput)
+    Config.ToggleESPKey = newInput
+end)
+
+CreateKeybind(SettingsTab, "Hide/Show Menu Key", Config.MenuKey, function(newInput)
+    Config.MenuKey = newInput
+end)
+
+--------------------------------------------------------------------------------
+-- FIXED CORE MECHANICS (AIMLOCK & ESP)
+--------------------------------------------------------------------------------
+local function isEnemy(player)
+    if not Config.TeamCheck then return true end
+    return player.Team ~= LocalPlayer.Team
+end
+
+local function getTargetPart(character)
+    if not character then return nil end
+    return character:FindFirstChild(Config.AimPart) or character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Head")
+end
+
+local function getTargetInFOV()
+    local closestPlayer = nil
+    local shortestDistance = Config.FOVRadius
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and isEnemy(player) and player.Character then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            local targetPart = getTargetPart(player.Character)
+
+            if humanoid and humanoid.Health > 0 and targetPart then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+
+                if onScreen then
+                    local distanceToMouse = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if distanceToMouse < shortestDistance then
+                        shortestDistance = distanceToMouse
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+-- Render loop handles Aimlock tracking and FOV updates
+RunService.RenderStepped:Connect(function()
+    -- Update FOV Circle Position
+    if Config.FOVVisible then
+        FOVCircle.Position = UserInputService:GetMouseLocation()
+        FOVCircle.Visible = true
+    else
+        FOVCircle.Visible = false
+    end
+
+    -- Fixed Aimlock Input & Tracking Logic
+    if Config.AimlockEnabled then
+        local isAiming = false
+        if typeof(Config.AimKey) == "EnumItem" then
+            if Config.AimKey.EnumType == Enum.UserInputType then
+                isAiming = UserInputService:IsMouseButtonPressed(Config.AimKey)
+            elseif Config.AimKey.EnumType == Enum.KeyCode then
+                isAiming = UserInputService:IsKeyDown(Config.AimKey)
+            end
+        end
+
+        if isAiming then
+            local target = getTargetInFOV()
+            if target and target.Character then
+                local targetPart = getTargetPart(target.Character)
+                if targetPart then
+                    local currentCFrame = Camera.CFrame
+                    local targetCFrame = CFrame.new(currentCFrame.Position, targetPart.Position)
+                    Camera.CFrame = currentCFrame:Lerp(targetCFrame, math.clamp(Config.Smoothness, 0.01, 1))
+                end
+            end
+        end
+    end
+
+    -- ESP Rendering Update Loop
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local char = player.Character
+            local highlight = char:FindFirstChild("ESPHighlight")
+            
+            if Config.ESPEnabled and isEnemy(player) then
+                if not highlight then
+                    highlight = Instance.new("Highlight")
+                    highlight.Name = "ESPHighlight"
+                    highlight.Adornee = char
+                    highlight.Parent = char
+                end
+                highlight.OutlineColor = Config.ESPColor
+                highlight.FillColor = Config.ESPFillColor
+                highlight.FillTransparency = Config.ESPFillTransparency
+            else
+                if highlight then highlight:Destroy() end
+            end
+        end
+    end
+end)
+
+-- UI Keybinds Listener
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Config.MenuKey then
+        MainFrame.Visible = not MainFrame.Visible
+    elseif input.KeyCode == Config.ToggleAimlockKey then
+        Config.AimlockEnabled = not Config.AimlockEnabled
+        ShowNotification("Aimlock Toggled", "Aimlock is now " .. (Config.AimlockEnabled and "ON" or "OFF"))
+    elseif input.KeyCode == Config.ToggleESPKey then
+        Config.ESPEnabled = not Config.ESPEnabled
+        ShowNotification("ESP Toggled", "ESP is now " .. (Config.ESPEnabled and "ON" or "OFF"))
+    end
+end)
+
+ShowNotification("cxnoy hub Loaded", "Press RightShift to hide/show the menu.")
